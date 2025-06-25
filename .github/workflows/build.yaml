@@ -1,0 +1,87 @@
+
+name: Build
+
+on:
+  repository_dispatch:
+    types: [triggered-by-*]
+
+jobs:
+  process-main-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout secondary repo
+      uses: actions/checkout@v4
+
+    - name: Extract payload information
+      id: payload
+      run: |
+        echo "main_repo=${{ github.event.client_payload.main_repo }}" >> $GITHUB_OUTPUT
+        echo "main_run_id=${{ github.event.client_payload.main_run_id }}" >> $GITHUB_OUTPUT
+        echo "commit_sha=${{ github.event.client_payload.commit_sha }}" >> $GITHUB_OUTPUT
+        echo "branch=${{ github.event.client_payload.branch }}" >> $GITHUB_OUTPUT
+        echo "callback_url=${{ github.event.client_payload.callback_url }}" >> $GITHUB_OUTPUT
+        
+    - name: Log received payload
+      run: |
+        echo "Received trigger from: ${{ steps.payload.outputs.main_repo }}"
+        echo "Main repo run ID: ${{ steps.payload.outputs.main_run_id }}"
+        echo "Commit SHA: ${{ steps.payload.outputs.commit_sha }}"
+        echo "Branch: ${{ steps.payload.outputs.branch }}"
+        echo "Callback URL: ${{ steps.payload.outputs.callback_url }}"
+
+    - name: Download parent artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: '${{ github.workspace }}/parent-artifacts'
+        github-token: ${{ secrets.MY_GITHUB_TOKEN }}
+        repository: '${{ steps.payload.outputs.main_repo }}'
+        run-id:  '${{ steps.payload.outputs.main_run_id }}'
+        merge-multiple: true
+
+
+    - name: List downloaded artifacts
+      run: |
+        echo "📂 Downloaded artifacts summary:"
+        mkdir -p parent-artifacts
+        
+        if [ -d "parent-artifacts" ]; then
+          echo "Contents of parent-artifacts directory:"
+          ls -la parent-artifacts/
+          
+          echo -e "\nDirectory structure:"
+          find parent-artifacts/ -type f | head -20
+          
+          echo -e "\nDisk usage:"
+          du -sh parent-artifacts/* 2>/dev/null || echo "No artifacts downloaded"
+        else
+          echo "No artifacts were downloaded"
+        fi
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: false
+
+    - name: Create VERSION file
+      run: |
+        echo "${GITHUB_REF#refs/tags/}" > VERSION
+        cat VERSION
+    - name: Build Go application
+      run: |
+        mkdir bin
+        mv parent-artifacts/echo-linux-amd64 bin/echo
+        chmod +x bin/echo
+        make build
+        ls -la bin/
+        ls -la .
+        find bin/ -type f | head -20
+        find dist/ -type f | head -20
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: artifacts-${{ github.run_id }}
+        path: dist/
+        retention-days: 30
+
