@@ -4,6 +4,11 @@ on:
   # repository_dispatch:
   #   types: [triggered-by-*]
   workflow_dispatch:
+    inputs:
+      run-name:
+        description: 'The distinct run name used to retrieve the run ID. Defaults to the workflow name'
+        type: string
+        required: false
     # types: [triggered-by-parent-release]
 
 jobs:
