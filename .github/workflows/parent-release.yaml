@@ -1,15 +1,18 @@
 name: Build on Parent Release
 
 on:
-  # repository_dispatch:
-  #   types: [triggered-by-*]
   workflow_dispatch:
     inputs:
       run-name:
         description: 'The distinct run name used to retrieve the run ID. Defaults to the workflow name'
         type: string
         required: false
-    # types: [triggered-by-parent-release]
+      trigger-id:
+        description: 'The ID of the trigger that initiated this workflow. Defaults to the event ID'
+        type: string
+        required: false
+env:
+  PARENT_REPO: 'gntouts/release-action-parent'
 
 jobs:
   process-main-build:
