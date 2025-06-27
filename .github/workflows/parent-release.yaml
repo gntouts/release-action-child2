@@ -2,7 +2,7 @@ name: Build on Parent Release
 run-name: >-
   ${{ (github.event_name == 'workflow_dispatch') &&
     github.event.inputs.run-name || github.event.client_payload.run-name }}
-    
+
 on:
   workflow_dispatch:
     inputs:
@@ -14,11 +14,15 @@ on:
         description: 'The ID of the trigger that initiated this workflow. Defaults to the event ID'
         type: string
         required: false
+      calling-repo:
+        description: 'The repository that triggered this workflow. Defaults to the repository of the event'
+        type: string
+        required: false
 env:
   PARENT_REPO: "gntouts/release-action-parent"
 
 jobs:
-  process-main-build:
+  build:
     runs-on: ubuntu-latest
     
     steps:
@@ -29,4 +33,7 @@ jobs:
           echo "Repository: ${{ github.repository }}"
           echo "Event: ${{ github.event_name }}"
           echo "Event type: ${{ github.event.action }}"
+          echo "Event repository: ${{ github.event.repository.full_name }}"
           echo "Event payload: ${{ toJson(github.event) }}"
+          echo "Event client payload: ${{ toJson(github.event.client_payload) }}"
+          echo "Event inputs: ${{ toJson(github.event.inputs) }}"
