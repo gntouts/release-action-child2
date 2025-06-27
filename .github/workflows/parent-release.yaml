@@ -1,0 +1,21 @@
+name: Build on Parent Release
+
+on:
+  # repository_dispatch:
+  #   types: [triggered-by-*]
+  workflow_dispatch:
+    # types: [triggered-by-parent-release]
+
+jobs:
+  process-main-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout secondary repo
+      uses: actions/checkout@v4
+    - name: Debug
+      run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Event type: ${{ github.event.action }}"
+          echo "Event payload: ${{ toJson(github.event) }}"
