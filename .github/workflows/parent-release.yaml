@@ -1,0 +1,161 @@
+name: Build on Parent Release
+env:
+  PARENT_REPO: "gntouts/release-action-parent"
+
+run-name: >-
+  ${{ (github.event_name == 'workflow_dispatch') &&
+    github.event.inputs.run-name || github.event.client_payload.run-name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-name:
+        description: 'The distinct run name used to retrieve the run ID. Defaults to the workflow name'
+        type: string
+        required: false
+      trigger-id:
+        description: 'The ID of the trigger that initiated this workflow. Defaults to the event ID'
+        type: string
+        required: false
+      calling-repo:
+        description: 'The repository that triggered this workflow. Defaults to the repository of the event'
+        type: string
+        required: false
+      release-tag:
+        description: 'The tag of the release to update'
+        type: string
+        required: true
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout secondary repo
+      uses: actions/checkout@v4
+    - name: Debug
+      run: |
+        echo "Debugging information:"
+        echo "Workflow name: ${{ github.workflow }}"
+        echo "Run ID: ${{ github.run_id }}"
+        echo "Repository: ${{ github.repository }}"
+        echo "Event: ${{ github.event_name }}"
+
+        echo "Debugging event information:"
+        echo "trigger-id: ${{ github.event.inputs['trigger-id'] }}"
+        echo "calling-repo: ${{ github.event.inputs['calling-repo'] }}"
+        echo "run-name: ${{ github.event.inputs['run-name'] }}"
+        echo "release-tag: ${{ github.event.inputs['release-tag'] }}"
+
+  build:
+    name: Build binaries using parent artifacts
+    runs-on: ubuntu-latest
+    needs: debug
+    
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Extract payload information
+      id: payload
+      run: |
+        echo "main_repo=${{ github.event.inputs['calling-repo'] }}" >> $GITHUB_OUTPUT
+        echo "main_run_id=${{ github.event.inputs['trigger-id'] }}" >> $GITHUB_OUTPUT
+        
+    - name: Log received payload
+      run: |
+        echo "Received trigger from: ${{ steps.payload.outputs.main_repo }}"
+        echo "Main repo run ID: ${{ steps.payload.outputs.main_run_id }}"
+
+    - name: Download parent artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: '${{ github.workspace }}/parent-artifacts'
+        github-token: ${{ secrets.MY_GITHUB_TOKEN }}
+        repository: '${{ steps.payload.outputs.main_repo }}'
+        run-id:  '${{ steps.payload.outputs.main_run_id }}'
+        merge-multiple: true
+
+
+    - name: List downloaded artifacts
+      run: |
+        echo "📂 Downloaded artifacts summary:"
+        mkdir -p parent-artifacts
+        
+        if [ -d "parent-artifacts" ]; then
+          echo "Contents of parent-artifacts directory:"
+          ls -la parent-artifacts/
+          
+          echo -e "\nDirectory structure:"
+          find parent-artifacts/ -type f | head -20
+          
+          echo -e "\nDisk usage:"
+          du -sh parent-artifacts/* 2>/dev/null || echo "No artifacts downloaded"
+        else
+          echo "No artifacts were downloaded"
+        fi
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: false
+
+    - name: Create VERSION file
+      run: |
+        echo "${GITHUB_REF#refs/tags/}" > VERSION
+        cat VERSION
+    - name: Build Go application
+      run: |
+        mkdir bin
+        mv parent-artifacts/echo-linux-amd64 bin/echo
+        chmod +x bin/echo
+        make build
+        ls -la bin/
+        ls -la .
+        find bin/ -type f | head -20
+        find dist/ -type f | head -20
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: artifacts-${{ github.run_id }}
+        path: dist/
+        retention-days: 30
+
+  update-parent-release:
+    name: Update Parent Release
+    runs-on: ubuntu-latest
+    needs: [build, debug]
+    steps:
+    - name: Download wokflow artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: '${{ github.workspace }}/workflow-artifacts'
+        github-token: ${{ secrets.MY_GITHUB_TOKEN }}
+        repository: '${{ github.repository }}'
+        run-id:  '${{ github.run_id }}'
+        merge-multiple: true
+    - name: List downloaded artifacts
+      run: |
+        echo "📂 Downloaded artifacts summary:"
+        mkdir -p workflow-artifacts
+        
+        if [ -d "workflow-artifacts" ]; then
+          echo "Contents of workflow-artifacts directory:"
+          ls -la workflow-artifacts/
+          
+          echo -e "\nDirectory structure:"
+          find workflow-artifacts/ -type f | head -20
+          
+          echo -e "\nDisk usage:"
+          du -sh workflow-artifacts/* 2>/dev/null || echo "No artifacts downloaded"
+        else
+          echo "No artifacts were downloaded"
+        fi
+    - name: Upload artifacts to parent release
+      uses: softprops/action-gh-release@v2
+      with:
+        repository: ${{ github.event.inputs['calling-repo'] }}
+        token: ${{ secrets.MY_GITHUB_TOKEN }}
+        files: |
+          workflow-artifacts/*
+        generate_release_notes: false
+        tag_name: ${{ github.event.inputs['release-tag'] }}
